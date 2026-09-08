@@ -6,11 +6,16 @@ export type Machine = {
   id: string;
   station: string;
   name: string;
+  model: string;
   status: Status;
   metrics: Metric[];
   history: number[];
+  tempHistory: number[];
   output: number;
   uptime: number;
+  quality: number;
+  energy: number;
+  health: number;
 };
 
 export type LogEntry = {
@@ -19,6 +24,7 @@ export type LogEntry = {
   level: "INFO" | "WARN" | "CRIT";
   machine: string;
   message: string;
+  ack?: boolean;
 };
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -29,10 +35,15 @@ export const initialMachines: Machine[] = [
     id: "M01",
     station: "STATION 01",
     name: "CENTRAL MILL",
+    model: "CNC-240 · 3-AXIS",
     status: "RUNNING",
     output: 0,
     uptime: 99.2,
-    history: Array.from({ length: 40 }, () => 55 + Math.random() * 20),
+    quality: 99.1,
+    energy: 6.4,
+    health: 92,
+    history: Array.from({ length: 48 }, () => 55 + Math.random() * 20),
+    tempHistory: Array.from({ length: 48 }, () => 55 + Math.random() * 10),
     metrics: [
       { key: "rpm", label: "ROTATION", unit: "RPM", value: 14200, max: 18000 },
       { key: "torque", label: "TORQUE", unit: "NM", value: 88.4, max: 140 },
@@ -44,10 +55,15 @@ export const initialMachines: Machine[] = [
     id: "M02",
     station: "STATION 02",
     name: "HYDRAULIC PRESS",
+    model: "PRESS-120 · 40 BAR",
     status: "RUNNING",
     output: 0,
     uptime: 97.5,
-    history: Array.from({ length: 40 }, () => 40 + Math.random() * 25),
+    quality: 97.8,
+    energy: 7.8,
+    health: 78,
+    history: Array.from({ length: 48 }, () => 40 + Math.random() * 25),
+    tempHistory: Array.from({ length: 48 }, () => 60 + Math.random() * 12),
     metrics: [
       { key: "pressure", label: "PRESSURE", unit: "BAR", value: 22.4, max: 40 },
       { key: "temp", label: "ACTUATOR TEMP", unit: "°C", value: 74, max: 120 },
@@ -57,17 +73,21 @@ export const initialMachines: Machine[] = [
   },
 ];
 
-export function stepMachine(m: Machine): { machine: Machine; events: Omit<LogEntry, "id" | "time">[] } {
+export function stepMachine(
+  m: Machine,
+  stress = 0,
+): { machine: Machine; events: Omit<LogEntry, "id" | "time">[] } {
   const events: Omit<LogEntry, "id" | "time">[] = [];
   const active = m.status === "RUNNING";
 
   const metrics = m.metrics.map((metric) => {
     if (!active) {
-      const target = metric.key === "temp" ? metric.value * 0.995 : metric.value * 0.85;
+      const target = metric.key === "temp" ? metric.value * 0.99 : metric.value * 0.85;
       return { ...metric, value: Math.round(target * 10) / 10 };
     }
     const scale = metric.max * 0.05;
-    const next = clamp(drift(metric.value, scale), metric.max * 0.15, metric.max);
+    const push = metric.key === "temp" || metric.key === "vib" ? stress * metric.max * 0.08 : 0;
+    const next = clamp(drift(metric.value, scale) + push, metric.max * 0.15, metric.max);
     return { ...metric, value: Math.round(next * 10) / 10 };
   });
 
@@ -77,16 +97,27 @@ export function stepMachine(m: Machine): { machine: Machine; events: Omit<LogEnt
 
   if (active && temp && temp.value > temp.max * 0.85) {
     status = "PROBLEM";
-    events.push({ level: "CRIT", machine: m.name, message: `Thermal limit exceeded — ${temp.value.toFixed(1)}°C` });
+    events.push({
+      level: "CRIT",
+      machine: m.name,
+      message: `Thermal limit exceeded — ${temp.value.toFixed(1)}°C, cooling loop under review`,
+    });
   } else if (active && vib && vib.value > vib.max * 0.75) {
     status = "STALLED";
-    events.push({ level: "WARN", machine: m.name, message: `Vibration above baseline — ${vib.value.toFixed(1)} mm/s` });
+    events.push({
+      level: "WARN",
+      machine: m.name,
+      message: `Vibration above baseline — ${vib.value.toFixed(1)} mm/s`,
+    });
   } else if (active) {
     status = "RUNNING";
   }
 
-  const load = active ? clamp(drift(m.history[m.history.length - 1] ?? 60, 14), 12, 100) : 4;
+  const load = active ? clamp(drift(m.history[m.history.length - 1] ?? 60, 14) + stress * 8, 12, 100) : 4;
   const history = [...m.history.slice(1), load];
+  const tempHistory = [...m.tempHistory.slice(1), temp ? (temp.value / temp.max) * 100 : 0];
+
+  const healthDrag = status === "PROBLEM" ? 0.8 : status === "STALLED" ? 0.3 : -0.15;
 
   return {
     machine: {
@@ -94,11 +125,24 @@ export function stepMachine(m: Machine): { machine: Machine; events: Omit<LogEnt
       metrics,
       status,
       history,
+      tempHistory,
       output: m.output + (active ? Math.round(2 + Math.random() * 4) : 0),
       uptime: clamp(active ? m.uptime + 0.01 : m.uptime - 0.08, 60, 100),
+      quality: clamp(status === "RUNNING" ? m.quality + 0.02 : m.quality - 0.06, 80, 100),
+      energy: clamp(active ? drift(m.energy, 0.6) + stress : m.energy * 0.7, 0.4, 20),
+      health: clamp(m.health - healthDrag, 5, 100),
     },
     events,
   };
+}
+
+export function oee(m: Machine): number {
+  const performance = m.history[m.history.length - 1] ?? 60;
+  return (m.uptime / 100) * (performance / 100) * (m.quality / 100) * 100;
+}
+
+export function hoursToService(m: Machine): number {
+  return Math.max(0, Math.round((m.health - 20) * 1.8));
 }
 
 export function nowStamp(): string {
