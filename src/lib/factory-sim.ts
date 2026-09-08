@@ -150,6 +150,10 @@ export const initialMachines: Machine[] = [
     health: 78,
     throttle: 60,
     ramp: 60,
+    runMin: 88,
+    unplannedDownMin: 15,
+    plannedDownMin: 0,
+
     history: Array.from({ length: 48 }, () => 40 + Math.random() * 25),
     tempHistory: Array.from({ length: 48 }, () => 60 + Math.random() * 12),
     metrics: [
