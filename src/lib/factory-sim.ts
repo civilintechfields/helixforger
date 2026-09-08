@@ -247,13 +247,16 @@ export function stepMachine(
   };
 }
 
-/** Planned production time = shift elapsed − planned maintenance taken (minutes). */
-export function plannedProductionMin(m: Machine): number {
-  return Math.max(1, m.runMin + m.unplannedDownMin);
+/** Total available time in shift, accounting for planned maintenance. */
+export function availableProductionMin(m: Machine, shiftLength: number): number {
+  const plannedMaint = plannedMaintenanceMin(m.id, shiftLength, true);
+  return Math.max(1, shiftLength - plannedMaint);
 }
 
-export function availability(m: Machine): number {
-  return clamp((m.runMin / plannedProductionMin(m)) * 100, 0, 100);
+/** OEE: accounts for planned maintenance in denominator */
+export function availability(m: Machine, shiftLength: number): number {
+  const available = availableProductionMin(m, shiftLength);
+  return clamp((m.runMin / available) * 100, 0, 100);
 }
 
 export function performance(m: Machine): number {
@@ -262,8 +265,9 @@ export function performance(m: Machine): number {
   return clamp(avg, 0, 100);
 }
 
-export function oee(m: Machine): number {
-  return (availability(m) / 100) * (performance(m) / 100) * (m.quality / 100) * 100;
+/** OEE calculation: (Availability × Performance × Quality) × 100, accounting for planned maintenance */
+export function oee(m: Machine, shiftLength: number = 480): number {
+  return (availability(m, shiftLength) / 100) * (performance(m) / 100) * (m.quality / 100) * 100;
 }
 
 export function hoursToService(m: Machine): number {
@@ -273,4 +277,3 @@ export function hoursToService(m: Machine): number {
 export function nowStamp(): string {
   return new Date().toLocaleTimeString("en-GB", { hour12: false });
 }
-
