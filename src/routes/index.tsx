@@ -127,6 +127,12 @@ function Console() {
     pushLog(level, m.name, message);
   };
 
+  const setThrottle = (m: Machine, amount: number, absolute = false) => {
+    const next = Math.max(0, Math.min(100, absolute ? amount : m.throttle + amount));
+    setMachines((prev) => prev.map((x) => (x.id === m.id ? { ...x, throttle: next } : x)));
+    pushLog("INFO", m.name, `Speed setpoint changed to ${next}%`);
+  };
+
   const injectFault = (m: Machine) => {
     setStress((s) => ({ ...s, [m.id]: 1.4 }));
     pushLog("WARN", m.name, "Demo scenario injected — thermal & vibration stress ramp");
