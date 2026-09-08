@@ -127,12 +127,6 @@ function Console() {
     pushLog(level, m.name, message);
   };
 
-  const setThrottle = (m: Machine, amount: number, absolute = false) => {
-    const next = Math.max(0, Math.min(100, absolute ? amount : m.throttle + amount));
-    setMachines((prev) => prev.map((x) => (x.id === m.id ? { ...x, throttle: next } : x)));
-    pushLog("INFO", m.name, `Speed setpoint changed to ${next}%`);
-  };
-
   const injectFault = (m: Machine) => {
     setStress((s) => ({ ...s, [m.id]: 1.4 }));
     pushLog("WARN", m.name, "Demo scenario injected — thermal & vibration stress ramp");
@@ -302,38 +296,6 @@ function Console() {
               </div>
 
               <div className="p-4 bg-ink flex flex-col gap-2">
-                <div className="border-2 border-line p-3">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[9px] font-bold tracking-widest text-dim uppercase">
-                      Speed setpoint
-                    </span>
-                    <span className="text-[10px] font-bold text-dim tabular-nums">
-                      actual {Math.round(m.ramp)}%
-                    </span>
-                  </div>
-                  <div className="font-display font-black text-2xl tabular-nums text-body">
-                    {Math.round(m.throttle)}%
-                  </div>
-                  <div className="mt-2 h-1.5 bg-line">
-                    <div className="h-full bg-ok transition-all" style={{ width: `${m.ramp}%` }} />
-                  </div>
-                  <div className="mt-2 grid grid-cols-4 gap-2">
-                    {[
-                      { label: "Idle", set: () => setThrottle(m, 20, true) },
-                      { label: "− Speed", set: () => setThrottle(m, -10) },
-                      { label: "+ Speed", set: () => setThrottle(m, 10) },
-                      { label: "Max", set: () => setThrottle(m, 100, true) },
-                    ].map((b) => (
-                      <button
-                        key={b.label}
-                        onClick={b.set}
-                        className="py-2 bg-line text-[10px] font-bold uppercase text-body hover:bg-ok hover:text-ink transition-colors"
-                      >
-                        {b.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
                 <button
                   onClick={() => setStatus(m, "STOPPED", "Emergency stop engaged by operator", "CRIT")}
                   className="w-full py-4 text-crit bg-ink border-2 border-crit font-black text-sm tracking-[0.2em] hover:bg-crit hover:text-white transition-colors uppercase"

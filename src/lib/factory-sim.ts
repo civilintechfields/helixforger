@@ -16,8 +16,6 @@ export type Machine = {
   quality: number;
   energy: number;
   health: number;
-  throttle: number; // operator setpoint 0-100
-  ramp: number; // actual spool-up 0-100, chases throttle slowly
 };
 
 export type LogEntry = {
@@ -44,8 +42,6 @@ export const initialMachines: Machine[] = [
     quality: 99.1,
     energy: 6.4,
     health: 92,
-    throttle: 70,
-    ramp: 70,
     history: Array.from({ length: 48 }, () => 55 + Math.random() * 20),
     tempHistory: Array.from({ length: 48 }, () => 55 + Math.random() * 10),
     metrics: [
@@ -66,8 +62,6 @@ export const initialMachines: Machine[] = [
     quality: 97.8,
     energy: 7.8,
     health: 78,
-    throttle: 60,
-    ramp: 60,
     history: Array.from({ length: 48 }, () => 40 + Math.random() * 25),
     tempHistory: Array.from({ length: 48 }, () => 60 + Math.random() * 12),
     metrics: [
@@ -84,28 +78,16 @@ export function stepMachine(
   stress = 0,
 ): { machine: Machine; events: Omit<LogEntry, "id" | "time">[] } {
   const events: Omit<LogEntry, "id" | "time">[] = [];
-  const stopped = m.status === "STOPPED";
   const active = m.status === "RUNNING";
 
-  // STOPPED = instant collapse to zero. RUNNING = slow spool-up toward throttle.
-  const ramp = stopped
-    ? 0
-    : active
-      ? m.ramp < m.throttle
-        ? Math.min(m.throttle, m.ramp + 5) // slow start
-        : Math.max(m.throttle, m.ramp - 9) // faster slow-down
-      : Math.max(0, m.ramp - 12);
-  const f = ramp / 100;
-
   const metrics = m.metrics.map((metric) => {
-    if (stopped) {
-      const target = metric.key === "temp" ? metric.value * 0.94 : 0;
+    if (!active) {
+      const target = metric.key === "temp" ? metric.value * 0.99 : metric.value * 0.85;
       return { ...metric, value: Math.round(target * 10) / 10 };
     }
-    const target = metric.max * (metric.key === "temp" ? 0.25 + f * 0.5 : 0.15 + f * 0.8);
-    const eased = metric.value + (target - metric.value) * 0.35;
+    const scale = metric.max * 0.05;
     const push = metric.key === "temp" || metric.key === "vib" ? stress * metric.max * 0.08 : 0;
-    const next = clamp(drift(eased, metric.max * 0.04) + push, 0, metric.max);
+    const next = clamp(drift(metric.value, scale) + push, metric.max * 0.15, metric.max);
     return { ...metric, value: Math.round(next * 10) / 10 };
   });
 
@@ -131,9 +113,9 @@ export function stepMachine(
     status = "RUNNING";
   }
 
-  const load = stopped ? 0 : clamp(drift(ramp, 6) + stress * 8, 0, 100);
+  const load = active ? clamp(drift(m.history[m.history.length - 1] ?? 60, 14) + stress * 8, 12, 100) : 4;
   const history = [...m.history.slice(1), load];
-  const tempHistory = [...m.tempHistory.slice(1), stopped ? 0 : temp ? (temp.value / temp.max) * 100 : 0];
+  const tempHistory = [...m.tempHistory.slice(1), temp ? (temp.value / temp.max) * 100 : 0];
 
   const healthDrag = status === "PROBLEM" ? 0.8 : status === "STALLED" ? 0.3 : -0.15;
 
@@ -142,13 +124,12 @@ export function stepMachine(
       ...m,
       metrics,
       status,
-      ramp,
       history,
       tempHistory,
-      output: m.output + (active ? Math.round((2 + Math.random() * 4) * f) : 0),
+      output: m.output + (active ? Math.round(2 + Math.random() * 4) : 0),
       uptime: clamp(active ? m.uptime + 0.01 : m.uptime - 0.08, 60, 100),
       quality: clamp(status === "RUNNING" ? m.quality + 0.02 : m.quality - 0.06, 80, 100),
-      energy: stopped ? Math.max(0.2, m.energy * 0.5) : clamp(0.5 + f * 9 + stress, 0.2, 20),
+      energy: clamp(active ? drift(m.energy, 0.6) + stress : m.energy * 0.7, 0.4, 20),
       health: clamp(m.health - healthDrag, 5, 100),
     },
     events,
