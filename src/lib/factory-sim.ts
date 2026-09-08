@@ -123,7 +123,10 @@ export const initialMachines: Machine[] = [
     health: 92,
     throttle: 70,
     ramp: 70,
-    history: Array.from({ length: 48 }, () => 55 + Math.random() * 20),
+    runMin: 96,
+    unplannedDownMin: 7,
+    plannedDownMin: 0,
+
     tempHistory: Array.from({ length: 48 }, () => 55 + Math.random() * 10),
     metrics: [
       { key: "rpm", label: "ROTATION", unit: "RPM", value: 14200, max: 18000 },
