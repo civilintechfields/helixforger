@@ -1,6 +1,74 @@
-export type Status = "RUNNING" | "STALLED" | "PROBLEM" | "STOPPED";
+export type Status = "RUNNING" | "STALLED" | "PROBLEM" | "STOPPED" | "MAINTENANCE";
 
 export type Metric = { key: string; label: string; unit: string; value: number; max: number };
+
+export type MaintenanceWindow = {
+  id: string;
+  machineId: string;
+  label: string;
+  /** minutes from shift start */
+  startMin: number;
+  durationMin: number;
+};
+
+export type Shift = {
+  id: string;
+  name: string;
+  /** minutes from midnight */
+  startMin: number;
+  endMin: number;
+};
+
+export const shifts: Shift[] = [
+  { id: "A", name: "SHIFT A · MORNING", startMin: 6 * 60, endMin: 14 * 60 },
+  { id: "B", name: "SHIFT B · AFTERNOON", startMin: 14 * 60, endMin: 22 * 60 },
+  { id: "C", name: "SHIFT C · NIGHT", startMin: 22 * 60, endMin: 30 * 60 },
+];
+
+export const maintenanceWindows: MaintenanceWindow[] = [
+  { id: "PM-01", machineId: "M01", label: "Spindle lubrication & tool check", startMin: 150, durationMin: 25 },
+  { id: "PM-02", machineId: "M02", label: "Seal inspection & hydraulic top-up", startMin: 300, durationMin: 35 },
+];
+
+export function minutesOfDay(d = new Date()): number {
+  return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+}
+
+export function currentShift(mins = minutesOfDay()): Shift {
+  const m = mins < shifts[0].startMin ? mins + 24 * 60 : mins;
+  return shifts.find((s) => m >= s.startMin && m < s.endMin) ?? shifts[2];
+}
+
+export function shiftProgress(shift: Shift, mins = minutesOfDay()) {
+  const m = mins < shifts[0].startMin ? mins + 24 * 60 : mins;
+  const length = shift.endMin - shift.startMin;
+  const elapsed = Math.max(0, Math.min(length, m - shift.startMin));
+  return { length, elapsed, remaining: length - elapsed, pct: (elapsed / length) * 100 };
+}
+
+export function fmtClock(minsFromMidnight: number): string {
+  const t = ((minsFromMidnight % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(t / 60);
+  const mm = Math.floor(t % 60);
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+/** Planned maintenance minutes for a machine inside the elapsed part of the shift. */
+export function plannedMaintenanceMin(machineId: string, elapsedMin: number, all = true): number {
+  return maintenanceWindows
+    .filter((w) => w.machineId === machineId)
+    .reduce((s, w) => {
+      if (all) return s + w.durationMin;
+      const overlap = Math.max(0, Math.min(w.startMin + w.durationMin, elapsedMin) - w.startMin);
+      return s + overlap;
+    }, 0);
+}
+
+export function nextMaintenance(machineId: string, elapsedMin: number): MaintenanceWindow | undefined {
+  return maintenanceWindows
+    .filter((w) => w.machineId === machineId && w.startMin + w.durationMin > elapsedMin)
+    .sort((a, b) => a.startMin - b.startMin)[0];
+}
 
 export type Machine = {
   id: string;
@@ -18,6 +86,10 @@ export type Machine = {
   health: number;
   throttle: number; // operator setpoint 0-100
   ramp: number; // actual spool-up 0-100, chases throttle slowly
+  /** shift accounting, in minutes */
+  runMin: number;
+  unplannedDownMin: number;
+  plannedDownMin: number;
 };
 
 export type LogEntry = {
@@ -31,6 +103,7 @@ export type LogEntry = {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const drift = (v: number, amount: number) => v + (Math.random() - 0.5) * amount;
+
 
 export const initialMachines: Machine[] = [
   {
