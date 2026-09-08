@@ -125,7 +125,7 @@ export const initialMachines: Machine[] = [
     ramp: 70,
     runMin: 96,
     unplannedDownMin: 7,
-    plannedDownMin: 0,
+    history: Array.from({ length: 48 }, () => 55 + Math.random() * 20),
 
     tempHistory: Array.from({ length: 48 }, () => 55 + Math.random() * 10),
     metrics: [
