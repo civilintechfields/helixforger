@@ -44,6 +44,8 @@ export const initialMachines: Machine[] = [
     quality: 99.1,
     energy: 6.4,
     health: 92,
+    throttle: 70,
+    ramp: 70,
     history: Array.from({ length: 48 }, () => 55 + Math.random() * 20),
     tempHistory: Array.from({ length: 48 }, () => 55 + Math.random() * 10),
     metrics: [
@@ -64,6 +66,8 @@ export const initialMachines: Machine[] = [
     quality: 97.8,
     energy: 7.8,
     health: 78,
+    throttle: 60,
+    ramp: 60,
     history: Array.from({ length: 48 }, () => 40 + Math.random() * 25),
     tempHistory: Array.from({ length: 48 }, () => 60 + Math.random() * 12),
     metrics: [
