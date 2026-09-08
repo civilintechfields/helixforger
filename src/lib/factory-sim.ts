@@ -34,17 +34,21 @@ export function minutesOfDay(d = new Date()): number {
   return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
 }
 
+const SHIFT_A = shifts[0]!;
+const SHIFT_C = shifts[2]!;
+
 export function currentShift(mins = minutesOfDay()): Shift {
-  const m = mins < shifts[0].startMin ? mins + 24 * 60 : mins;
-  return shifts.find((s) => m >= s.startMin && m < s.endMin) ?? shifts[2];
+  const m = mins < SHIFT_A.startMin ? mins + 24 * 60 : mins;
+  return shifts.find((s) => m >= s.startMin && m < s.endMin) ?? SHIFT_C;
 }
 
 export function shiftProgress(shift: Shift, mins = minutesOfDay()) {
-  const m = mins < shifts[0].startMin ? mins + 24 * 60 : mins;
+  const m = mins < SHIFT_A.startMin ? mins + 24 * 60 : mins;
   const length = shift.endMin - shift.startMin;
   const elapsed = Math.max(0, Math.min(length, m - shift.startMin));
   return { length, elapsed, remaining: length - elapsed, pct: (elapsed / length) * 100 };
 }
+
 
 export function fmtClock(minsFromMidnight: number): string {
   const t = ((minsFromMidnight % (24 * 60)) + 24 * 60) % (24 * 60);
