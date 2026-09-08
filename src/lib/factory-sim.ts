@@ -16,6 +16,8 @@ export type Machine = {
   quality: number;
   energy: number;
   health: number;
+  throttle: number; // operator setpoint 0-100
+  ramp: number; // actual spool-up 0-100, chases throttle slowly
 };
 
 export type LogEntry = {
