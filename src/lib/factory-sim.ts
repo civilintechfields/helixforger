@@ -168,12 +168,14 @@ export const initialMachines: Machine[] = [
 export function stepMachine(
   m: Machine,
   stress = 0,
+  tickMin = 1,
 ): { machine: Machine; events: Omit<LogEntry, "id" | "time">[] } {
   const events: Omit<LogEntry, "id" | "time">[] = [];
-  const stopped = m.status === "STOPPED";
+  const maintenance = m.status === "MAINTENANCE";
+  const stopped = m.status === "STOPPED" || maintenance;
   const active = m.status === "RUNNING";
 
-  // STOPPED = instant collapse to zero. RUNNING = slow spool-up toward throttle.
+  // STOPPED / MAINTENANCE = instant collapse to zero. RUNNING = slow spool-up toward throttle.
   const ramp = stopped
     ? 0
     : active
@@ -221,7 +223,7 @@ export function stepMachine(
   const history = [...m.history.slice(1), load];
   const tempHistory = [...m.tempHistory.slice(1), stopped ? 0 : temp ? (temp.value / temp.max) * 100 : 0];
 
-  const healthDrag = status === "PROBLEM" ? 0.8 : status === "STALLED" ? 0.3 : -0.15;
+  const healthDrag = status === "PROBLEM" ? 0.8 : status === "STALLED" ? 0.3 : maintenance ? -1.2 : -0.15;
 
   return {
     machine: {
@@ -231,6 +233,10 @@ export function stepMachine(
       ramp,
       history,
       tempHistory,
+      runMin: m.runMin + (status === "RUNNING" ? tickMin : 0),
+      plannedDownMin: m.plannedDownMin + (maintenance ? tickMin : 0),
+      unplannedDownMin:
+        m.unplannedDownMin + (!maintenance && status !== "RUNNING" ? tickMin : 0),
       output: m.output + (active ? Math.round((2 + Math.random() * 4) * f) : 0),
       uptime: clamp(active ? m.uptime + 0.01 : m.uptime - 0.08, 60, 100),
       quality: clamp(status === "RUNNING" ? m.quality + 0.02 : m.quality - 0.06, 80, 100),
@@ -241,9 +247,23 @@ export function stepMachine(
   };
 }
 
+/** Planned production time = shift elapsed − planned maintenance taken (minutes). */
+export function plannedProductionMin(m: Machine): number {
+  return Math.max(1, m.runMin + m.unplannedDownMin);
+}
+
+export function availability(m: Machine): number {
+  return clamp((m.runMin / plannedProductionMin(m)) * 100, 0, 100);
+}
+
+export function performance(m: Machine): number {
+  const recent = m.history.slice(-12);
+  const avg = recent.reduce((s, v) => s + v, 0) / (recent.length || 1);
+  return clamp(avg, 0, 100);
+}
+
 export function oee(m: Machine): number {
-  const performance = m.history[m.history.length - 1] ?? 60;
-  return (m.uptime / 100) * (performance / 100) * (m.quality / 100) * 100;
+  return (availability(m) / 100) * (performance(m) / 100) * (m.quality / 100) * 100;
 }
 
 export function hoursToService(m: Machine): number {
@@ -253,3 +273,4 @@ export function hoursToService(m: Machine): number {
 export function nowStamp(): string {
   return new Date().toLocaleTimeString("en-GB", { hour12: false });
 }
+
